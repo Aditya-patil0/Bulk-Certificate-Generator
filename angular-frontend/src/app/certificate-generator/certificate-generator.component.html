@@ -1,0 +1,141 @@
+<div class="cert-container">
+  <header class="app-header">
+    <div class="brand">
+      <h2>Bulk Certificate Generator</h2>
+    </div>
+    <nav class="nav-links">
+      <button [class.active]="activeTab === 'create'" (click)="activeTab = 'create'">New Batch</button>
+      <button [class.active]="activeTab === 'jobs'" (click)="activeTab = 'jobs'">Batches</button>
+      <button [class.active]="activeTab === 'verify'" (click)="activeTab = 'verify'">Verify</button>
+    </nav>
+  </header>
+
+  <!-- Create Tab -->
+  <main *ngIf="activeTab === 'create'" class="content-panel">
+    <div class="panel-header">
+      <h3>Create Batch</h3>
+      <div class="csv-actions">
+        <input type="file" accept=".csv" #csvInput (change)="handleCsvFile($event)" style="display:none;" />
+        <button type="button" (click)="csvInput.click()" class="btn-csv">Bulk Upload CSV</button>
+        <button type="button" (click)="downloadSampleCsv()" class="btn-sample">Sample CSV</button>
+      </div>
+    </div>
+
+    <div *ngIf="csvMessage" class="csv-msg">{{ csvMessage }}</div>
+
+    <form (ngSubmit)="submitJob()">
+      <div class="form-grid">
+        <div class="form-group">
+          <label>Batch Title *</label>
+          <input
+            type="text"
+            [(ngModel)]="title"
+            name="title"
+            (blur)="isTitleTouched = true"
+            (input)="isTitleTouched = true"
+            [class.input-error]="(isTitleTouched || title.length > 0) && title.trim().length < 3"
+            required
+          />
+          <span *ngIf="(isTitleTouched || title.length > 0) && title.trim().length < 3" class="error-text">
+            Batch title must contain at least 3 characters.
+          </span>
+        </div>
+        <div class="form-group">
+          <label>Course or Event Name *</label>
+          <input type="text" [(ngModel)]="courseName" name="courseName" required />
+        </div>
+        <div class="form-group">
+          <label>Issuing Organization *</label>
+          <input type="text" [(ngModel)]="issuerOrganization" name="issuerOrganization" required />
+        </div>
+        <div class="form-group">
+          <label>Issue Date *</label>
+          <input type="text" [(ngModel)]="issueDate" name="issueDate" required />
+        </div>
+      </div>
+
+      <div class="roster-section">
+        <div class="roster-header">
+          <h4>Recipients ({{ recipients.length }})</h4>
+          <button type="button" (click)="addRecipient()">+ Add Row</button>
+        </div>
+
+        <div *ngFor="let r of recipients; let i = index" class="recipient-row">
+          <input type="text" [(ngModel)]="r.name" [name]="'name_' + i" placeholder="Full Name *" required />
+          <input type="email" [(ngModel)]="r.email" [name]="'email_' + i" placeholder="Email (optional)" />
+          <input type="text" [(ngModel)]="r.grade" [name]="'grade_' + i" placeholder="Honors / Grade (optional)" />
+          <button type="button" (click)="removeRecipient(i)" [disabled]="recipients.length <= 1">✕</button>
+        </div>
+      </div>
+
+      <div class="form-actions">
+        <button type="submit" [disabled]="isSubmitting" class="primary-btn">
+          {{ isSubmitting ? 'Submitting Batch...' : 'Generate Certificates' }}
+        </button>
+      </div>
+    </form>
+  </main>
+
+  <!-- Jobs Tab -->
+  <main *ngIf="activeTab === 'jobs'" class="content-panel">
+    <div *ngIf="selectedJob" class="job-status-card">
+      <div class="status-top">
+        <div>
+          <span class="status-tag">{{ selectedJob.status }}</span>
+          <h3>{{ selectedJob.title }}</h3>
+          <p>{{ selectedJob.course_name }} &bull; {{ selectedJob.issuer_organization }} &bull; {{ selectedJob.issue_date }}</p>
+        </div>
+        <a *ngIf="selectedJob.success_count > 0" [href]="apiUrl + '/jobs/' + selectedJob.id + '/download-all'" download class="zip-btn">
+          Download All (ZIP)
+        </a>
+      </div>
+
+      <div class="progress-bar-container">
+        <div class="progress-bar" [style.width.%]="selectedJob.progress_percentage"></div>
+      </div>
+      <div class="progress-text">{{ selectedJob.progress_percentage }}% ({{ selectedJob.processed_count }}/{{ selectedJob.total_count }} processed)</div>
+
+      <table class="certs-table">
+        <thead>
+          <tr>
+            <th>Recipient</th>
+            <th>Verification ID</th>
+            <th>Status</th>
+            <th>Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr *ngFor="let cert of selectedJob.certificates">
+            <td>{{ cert.recipient_name }}</td>
+            <td class="font-mono">{{ cert.certificate_code }}</td>
+            <td><span class="status-chip">{{ cert.status }}</span></td>
+            <td>
+              <a *ngIf="cert.status === 'GENERATED'" [href]="apiUrl + '/certificates/' + cert.id + '/download'" download class="btn-sm">
+                PDF
+              </a>
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </main>
+
+  <!-- Verify Tab -->
+  <main *ngIf="activeTab === 'verify'" class="content-panel verify-panel">
+    <h3>Certificate Verification</h3>
+    <form (ngSubmit)="verify()" class="verify-form">
+      <input type="text" [(ngModel)]="verifyCode" name="verifyCode" placeholder="e.g. CERT-2026-F9A1B2C3" required />
+      <button type="submit" [disabled]="isVerifying">Verify</button>
+    </form>
+
+    <div *ngIf="verifyResult" class="verify-result" [class.valid]="verifyResult.is_valid">
+      <h4>{{ verifyResult.is_valid ? 'Valid Certificate' : 'Unverified Code' }}</h4>
+      <p>{{ verifyResult.verification_message }}</p>
+      <div *ngIf="verifyResult.is_valid" class="verify-meta">
+        <div><strong>Recipient:</strong> {{ verifyResult.recipient_name }}</div>
+        <div><strong>Course:</strong> {{ verifyResult.course_name }}</div>
+        <div><strong>Issuer:</strong> {{ verifyResult.issuer_organization }}</div>
+      </div>
+    </div>
+  </main>
+</div>

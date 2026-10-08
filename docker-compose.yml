@@ -1,0 +1,13 @@
+version: '3.8'
+
+services:
+  api:
+    build: .
+    container_name: bulk_certificate_generator
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./storage:/app/storage
+    environment:
+      - DATABASE_URL=sqlite:///storage/database/certificates.db
+    restart: unless-stopped
